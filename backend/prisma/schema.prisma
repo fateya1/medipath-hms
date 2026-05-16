@@ -309,6 +309,7 @@ model StaffProfile {
   triageRecords    TriageRecord[]
   vitalSigns       VitalSign[]
   dispensing       Dispensing[]
+  shifts           Shift[]
 
   @@map("staff_profiles")
 }
@@ -735,4 +736,30 @@ model SystemConfig {
   updatedAt DateTime @updatedAt
 
   @@map("system_config")
+}
+
+// ─── SHIFTS ────────────────────────────────────────────────────────────────
+
+enum ShiftType {
+  MORNING
+  AFTERNOON
+  NIGHT
+}
+
+model Shift {
+  id          String       @id @default(cuid())
+  staffId     String
+  staff       StaffProfile @relation(fields: [staffId], references: [id])
+  shiftDate   DateTime
+  shiftType   ShiftType
+  startTime   String
+  endTime     String
+  onCall      Boolean      @default(false)
+  ward        String?
+  notes       String?
+  createdAt   DateTime     @default(now())
+  updatedAt   DateTime     @updatedAt
+
+  @@unique([staffId, shiftDate, shiftType])
+  @@map("shifts")
 }

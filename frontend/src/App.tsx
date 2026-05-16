@@ -59,6 +59,7 @@ import { LabResultsPage } from './pages/lab/LabResultsPage';
 
 // Reports
 import { ReportsPage } from './pages/reports/ReportsPage';
+import { MigrationPage } from './pages/migration/MigrationPage';
 
 // ─── Guards ────────────────────────────────────────────────────────────────
 
@@ -216,6 +217,17 @@ export default function App() {
 
               {/* Reports */}
               <Route path="reports" element={
+                <ProtectedRoute roles={['ADMIN', 'DOCTOR']}>
+                  <ReportsPage />
+                </ProtectedRoute>
+              } />
+
+              {/* Migration */}
+              <Route path="migration" element={
+                <ProtectedRoute roles={['ADMIN']}>
+                  <MigrationPage />
+                </ProtectedRoute>
+              } />
                 <ProtectedRoute roles={['ADMIN', 'DOCTOR']}>
                   <ReportsPage />
                 </ProtectedRoute>

@@ -8,7 +8,8 @@ import { createServer } from 'http';
 // ─── Static imports (required for Vercel serverless) ──────────────────────
 import { authRouter }           from './src/auth/auth.routes.js';
 import { patientsRouter }       from './src/patients/patients.routes.js';
-import { staffRouter }          from './src/staff/staff.routes.js';
+import { staffRouter }           from './src/staff/staff.routes.js';
+import { shiftsRouter }          from './src/staff/shifts.routes.js';
 import { doctorsRouter }        from './src/doctors/doctors.routes.js';
 import { nursesRouter }         from './src/nurses/nurses.routes.js';
 import { appointmentsRouter }   from './src/appointments/appointments.routes.js';
@@ -77,6 +78,7 @@ app.get('/health', (req, res) => {
 app.use('/api/auth',            authRouter);
 app.use('/api/patients',        patientsRouter);
 app.use('/api/staff',           staffRouter);
+app.use('/api/staff/shifts',    shiftsRouter);
 app.use('/api/doctors',         doctorsRouter);
 app.use('/api/nurses',          nursesRouter);
 app.use('/api/appointments',    appointmentsRouter);
