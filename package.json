@@ -1,0 +1,52 @@
+{
+  "name": "medipath-hms",
+  "version": "1.0.0",
+  "description": "Comprehensive Hospital Management System with M-Pesa billing, multi-role portals, and clinical pathways",
+  "private": true,
+  "type": "module",
+  "main": "backend/server.js",
+  "engines": {
+    "node": "20.x"
+  },
+  "scripts": {
+    "start": "node backend/server.js",
+    "dev": "node backend/server.js",
+    "dev:backend": "cd backend && npm run dev",
+    "dev:frontend": "cd frontend && npm run dev",
+    "dev:all": "concurrently \"npm run dev:backend\" \"npm run dev:frontend\"",
+    "postinstall": "npx prisma generate --schema=backend/prisma/schema.prisma",
+    "build": "npm install && npx prisma generate --schema=backend/prisma/schema.prisma",
+    "build:frontend": "cd frontend && npm run build",
+    "deploy": "npx prisma generate --schema=backend/prisma/schema.prisma && npx prisma migrate deploy --schema=backend/prisma/schema.prisma",
+    "db:migrate": "npx prisma migrate dev --schema=backend/prisma/schema.prisma",
+    "db:studio": "npx prisma studio --schema=backend/prisma/schema.prisma",
+    "db:seed": "node scripts/seed.js",
+    "test": "cd backend && npm test"
+  },
+  "dependencies": {
+    "@nestjs/passport": "^11.0.5",
+    "bcryptjs": "^2.4.3",
+    "cors": "^2.8.5",
+    "dotenv": "^16.4.5",
+    "express": "^4.19.2",
+    "express-rate-limit": "^7.4.0",
+    "helmet": "^7.1.0",
+    "jsonwebtoken": "^9.0.3",
+    "mime": "^4.1.0",
+    "nodemailer": "^6.9.15",
+    "passport": "^0.7.0",
+    "passport-jwt": "^4.0.1",
+    "pg": "^8.18.0",
+    "prisma": "^5.22.0",
+    "zod": "^3.24.0",
+    "concurrently": "^8.2.2"
+  },
+  "devDependencies": {
+    "@prisma/client": "^5.22.0",
+    "@types/node": "^20.0.0",
+    "typescript": "^5.3.0"
+  },
+  "keywords": ["hospital", "management", "hms", "healthcare", "kenya", "mpesa", "prisma", "nestjs"],
+  "author": "Medipath Team",
+  "license": "MIT"
+}

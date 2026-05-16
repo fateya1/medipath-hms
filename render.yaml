@@ -1,0 +1,22 @@
+services:
+  - type: web
+    name: medipath-hms-backend
+    env: node
+    buildCommand: npm install && npx prisma generate --schema=backend/prisma/schema.prisma
+    startCommand: npm start
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: DATABASE_URL
+        fromDatabase:
+          name: medipath-db
+          property: connectionString
+      - key: JWT_SECRET
+        generateValue: true
+      - key: FRONTEND_URL
+        value: https://medipath-hms.vercel.app
+
+databases:
+  - name: medipath-db
+    databaseName: medipath_hms
+    plan: starter
