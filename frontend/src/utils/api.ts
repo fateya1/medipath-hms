@@ -1,11 +1,12 @@
 // frontend/src/utils/api.ts
 // Axios client with JWT interceptors — mirrors EduPath pattern
 
-import axios, { AxiosInstance } from 'axios';
+import axios from "axios";
+
 
 const TOKEN_KEY = 'medipath_access_token';
 
-export const api: AxiosInstance = axios.create({
+export const api = axios.create({
   baseURL: '/api',
   headers: { 'Content-Type': 'application/json' },
   timeout: 30000,

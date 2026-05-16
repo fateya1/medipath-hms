@@ -28,7 +28,7 @@ export function LoginPage() {
   const onSubmit = async (data: LoginForm) => {
     try {
       setServerError('');
-      await login(data);
+      await login(data as any);
       navigate('/dashboard');
     } catch (err: any) {
       setServerError(err.response?.data?.error || 'Login failed. Please check your credentials.');

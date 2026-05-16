@@ -228,6 +228,9 @@ export default function App() {
                   <MigrationPage />
                 </ProtectedRoute>
               } />
+
+              {/* Reports */}
+              <Route path="reports" element={
                 <ProtectedRoute roles={['ADMIN', 'DOCTOR']}>
                   <ReportsPage />
                 </ProtectedRoute>

@@ -1,6 +1,6 @@
 // frontend/src/pages/dashboard/DoctorDashboard.tsx
 import { useAuth } from '../../contexts/AuthContext';
-import { Calendar, Users, FlaskConical, Pill, Clock, CheckCircle } from 'lucide-react';
+import { Calendar, Users, FlaskConical, Pill, Clock, CheckCircle, Receipt } from "lucide-react";
 import { formatKES } from '../../utils/api';
 
 const TODAY_APPOINTMENTS = [
@@ -245,4 +245,3 @@ export function LabDashboard() {
 }
 
 // Import missing icons used in patient dashboard
-import { Users, Receipt, Calendar } from 'lucide-react';
