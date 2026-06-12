@@ -1,109 +1,109 @@
-// backend/src/staff/shifts.routes.js
 import { Router } from 'express';
 import { prisma } from '../common/prisma.js';
 import { authenticate, authorize } from '../common/guards/jwt.guard.js';
+import { createId } from '@paralleldrive/cuid2';
 
 export const shiftsRouter = Router();
 shiftsRouter.use(authenticate);
 
 // ─── Flexible staff number lookup ─────────────────────────────────────────
-// Matches CSV format "DR-001" against DB format "DR-2024-0001"
-async function findStaffByShortNumber(shortNumber) {
-  // Try exact match first
-  const exact = await prisma.staffProfile.findFirst({
-    where: { staffNumber: shortNumber },
-  });
-  if (exact) return exact;
-
-  // Parse short format: "DR-001" → prefix="DR", padded="0001"
-  const parts = shortNumber.split('-');
-  if (parts.length < 2) return null;
+function parseShortNumber(shortNumber) {
+  const parts = shortNumber.trim().split('-');
   const prefix = parts[0];
   const num = parts[parts.length - 1];
   const paddedNum = num.padStart(4, '0');
-
-  // Match "DR-2024-0001" style
-  return prisma.staffProfile.findFirst({
-    where: {
-      AND: [
-        { staffNumber: { startsWith: prefix + '-' } },
-        { staffNumber: { endsWith: '-' + paddedNum } },
-      ],
-    },
-  });
+  return { prefix, paddedNum };
 }
 
 // ─── POST /api/staff/shifts/import ────────────────────────────────────────
-shiftsRouter.post('/import', authorize('ADMIN'), async (req, res, next) => {
+shiftsRouter.post(['/', '/import'], authorize('ADMIN'), async (req, res, next) => {
   try {
     const { shifts } = req.body;
-
     if (!Array.isArray(shifts) || shifts.length === 0) {
       return res.status(400).json({ error: 'No shift data provided' });
     }
 
-    let imported = 0;
-    let skipped = 0;
-    let failed = 0;
+    // ── Step 1: Get unique staff numbers from CSV ──────────────────────
+    const uniqueNumbers = [...new Set(shifts.map(r => r.staffNumber?.trim()).filter(Boolean))];
+
+    // ── Step 2: ONE bulk query to find all matching staff ──────────────
+    const allStaff = await prisma.staffProfile.findMany({
+      select: { id: true, staffNumber: true },
+    });
+
+    // ── Step 3: Build lookup map (short → id) ─────────────────────────
+    const staffMap = new Map();
+    for (const s of allStaff) {
+      staffMap.set(s.staffNumber, s.id); // exact match
+    }
+
+    // Flexible match for short numbers
+    for (const shortNum of uniqueNumbers) {
+      if (staffMap.has(shortNum)) continue;
+      const { prefix, paddedNum } = parseShortNumber(shortNum);
+      const match = allStaff.find(s =>
+        s.staffNumber.startsWith(prefix + '-') &&
+        s.staffNumber.endsWith('-' + paddedNum)
+      );
+      if (match) staffMap.set(shortNum, match.id);
+    }
+
+    // ── Step 4: Build valid rows and collect errors ────────────────────
     const errors = [];
+    const validRows = [];
 
     for (let i = 0; i < shifts.length; i++) {
       const row = shifts[i];
       const rowNum = i + 1;
+      const staffNumber = row.staffNumber?.trim();
 
-      try {
-        const { staffNumber, shiftDate, shiftType, startTime, endTime, onCall, ward } = row;
-
-        // Validate required fields
-        if (!staffNumber || !shiftDate || !shiftType) {
-          errors.push({ row: rowNum, error: 'Missing required fields: staffNumber, shiftDate, shiftType' });
-          failed++;
-          continue;
-        }
-
-        // Flexible staff lookup
-        const staff = await findStaffByShortNumber(staffNumber.trim());
-        if (!staff) {
-          errors.push({ row: rowNum, error: `Not Found: staff "${staffNumber}"` });
-          failed++;
-          continue;
-        }
-
-        // Upsert to avoid duplicates on re-import
-        await prisma.shift.upsert({
-          where: {
-            staffId_shiftDate_shiftType: {
-              staffId: staff.id,
-              shiftDate: new Date(shiftDate),
-              shiftType: shiftType.toUpperCase(),
-            },
-          },
-          update: { startTime, endTime, onCall: onCall === 'YES' || onCall === true, ward: ward || null },
-          create: {
-            staffId: staff.id,
-            shiftDate: new Date(shiftDate),
-            shiftType: shiftType.toUpperCase(),
-            startTime,
-            endTime,
-            onCall: onCall === 'YES' || onCall === true,
-            ward: ward || null,
-          },
-        });
-
-        imported++;
-      } catch (err) {
-        errors.push({ row: rowNum, error: err.message });
-        failed++;
+      if (!staffNumber || !row.shiftDate || !row.shiftType) {
+        errors.push({ row: rowNum, error: 'Missing required fields' });
+        continue;
       }
+
+      const staffId = staffMap.get(staffNumber);
+      if (!staffId) {
+        errors.push({ row: rowNum, error: `Not Found: staff "${staffNumber}"` });
+        continue;
+      }
+
+      validRows.push({
+        id: createId(),
+        staffId,
+        shiftDate: new Date(row.shiftDate),
+        shiftType: row.shiftType.toUpperCase(),
+        startTime: row.startTime || '00:00',
+        endTime: row.endTime || '00:00',
+        onCall: row.onCall === 'YES' || row.onCall === true,
+        ward: row.ward || null,
+        updatedAt: new Date(),
+      });
     }
+
+    // ── Step 5: Bulk insert in batches of 100 ─────────────────────────
+    const BATCH = 100;
+    let imported = 0;
+
+    for (let i = 0; i < validRows.length; i += BATCH) {
+      const batch = validRows.slice(i, i + BATCH);
+      const result = await prisma.shift.createMany({
+        data: batch,
+        skipDuplicates: true,
+      });
+      imported += result.count;
+    }
+
+    const skipped = validRows.length - imported;
 
     return res.json({
       total: shifts.length,
       imported,
       skipped,
-      failed,
-      errors: errors.slice(0, 50), // cap at 50 errors shown
+      failed: errors.length,
+      errors: errors.slice(0, 50),
     });
+
   } catch (err) {
     next(err);
   }
@@ -123,7 +123,6 @@ shiftsRouter.get('/', async (req, res, next) => {
         },
       } : {}),
     };
-
     const shifts = await prisma.shift.findMany({
       where,
       include: {
@@ -137,9 +136,14 @@ shiftsRouter.get('/', async (req, res, next) => {
       },
       orderBy: [{ shiftDate: 'asc' }, { shiftType: 'asc' }],
     });
-
     return res.json(shifts);
   } catch (err) {
     next(err);
   }
+});
+
+// Alias: POST /api/shifts also triggers import
+shiftsRouter.post('/', authorize('ADMIN'), async (req, res, next) => {
+  req.url = '/import';
+  shiftsRouter.handle(req, res, next);
 });

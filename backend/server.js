@@ -50,7 +50,10 @@ const limiter = rateLimit({
   max: 200,
   message: { error: 'Too many requests, please try again later.' },
 });
-app.use('/api/', limiter);
+app.use('/api/', (req, res, next) => {
+  if (req.path.includes('/shifts/import')) return next();
+  return limiter(req, res, next);
+});
 
 const authLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
@@ -77,8 +80,10 @@ app.get('/health', (req, res) => {
 // ─── Routes ────────────────────────────────────────────────────────────────
 app.use('/api/auth',            authRouter);
 app.use('/api/patients',        patientsRouter);
-app.use('/api/staff',           staffRouter);
 app.use('/api/staff/shifts',    shiftsRouter);
+app.use('/api/shifts',          shiftsRouter);
+app.post('/api/shifts',         (req, res, next) => { req.url = '/import'; shiftsRouter(req, res, next); });
+app.use('/api/staff',           staffRouter);
 app.use('/api/doctors',         doctorsRouter);
 app.use('/api/nurses',          nursesRouter);
 app.use('/api/appointments',    appointmentsRouter);

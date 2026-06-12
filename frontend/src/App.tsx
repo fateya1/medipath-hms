@@ -229,12 +229,6 @@ export default function App() {
                 </ProtectedRoute>
               } />
 
-              {/* Reports */}
-              <Route path="reports" element={
-                <ProtectedRoute roles={['ADMIN', 'DOCTOR']}>
-                  <ReportsPage />
-                </ProtectedRoute>
-              } />
             </Route>
 
             {/* Catch-all */}

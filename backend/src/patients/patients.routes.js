@@ -209,3 +209,192 @@ patientsRouter.get('/:id/vitals', async (req, res, next) => {
     next(err);
   }
 });
+// ─────────────────────────────────────────────────────────────────────────────
+// ADD THIS BLOCK to the bottom of backend/src/patients/patients.routes.js
+// (before the last line that might close the file, if any)
+// ─────────────────────────────────────────────────────────────────────────────
+//
+// Also add this import at the TOP of patients.routes.js (with the other imports):
+//   import bcrypt from 'bcryptjs';
+//
+// ─────────────────────────────────────────────────────────────────────────────
+
+// ─── Helper: generate sequential patient number ───────────────────────────
+async function generatePatientNumber() {
+  const year = new Date().getFullYear();
+  const count = await prisma.patient.count();
+  return `MED-${year}-${String(count + 1).padStart(5, '0')}`;
+}
+
+// ─── POST /api/patients/import ────────────────────────────────────────────
+//
+// Accepts JSON body: { patients: [ ...rows ] }
+// Each row (from CSV) should have:
+//   firstName, lastName, dateOfBirth (YYYY-MM-DD), gender (MALE/FEMALE),
+//   phone, shaNumber (optional), county (optional), bloodGroup (optional)
+//
+// The route creates a User + Patient per row inside a transaction.
+// A temporary password is generated; patients can reset via forgot-password.
+//
+patientsRouter.post(
+  '/import',
+  authorize('ADMIN', 'RECEPTIONIST'),
+  async (req, res, next) => {
+    try {
+      const rows = req.body?.patients;
+      if (!Array.isArray(rows) || rows.length === 0) {
+        return res.status(400).json({ error: 'No patient rows provided' });
+      }
+
+      // ── Resolve tenant_id from JWT ──────────────────────────────────────
+      // The JWT guard sets req.user — check which field carries the tenant.
+      // Common patterns: req.user.tenantId  OR  req.user.tenant_id
+      // We try both; adjust if your guard uses a different field name.
+      const tenantId = req.user?.tenantId ?? req.user?.tenant_id;
+      if (!tenantId) {
+        return res.status(400).json({ error: 'Tenant context missing from token' });
+      }
+
+      const VALID_GENDERS   = ['MALE', 'FEMALE', 'OTHER', 'PREFER_NOT_TO_SAY'];
+      const VALID_BG        = [
+        'O_POSITIVE','O_NEGATIVE','A_POSITIVE','A_NEGATIVE',
+        'B_POSITIVE','B_NEGATIVE','AB_POSITIVE','AB_NEGATIVE','UNKNOWN',
+      ];
+
+      let imported = 0;
+      let skipped  = 0;
+      let failed   = 0;
+      const errors = [];
+
+      for (let i = 0; i < rows.length; i++) {
+        const row = rows[i];
+        const rowNum = i + 1;
+
+        try {
+          // ── Basic validation ──────────────────────────────────────────
+          if (!row.firstName?.trim() || !row.lastName?.trim()) {
+            errors.push({ row: rowNum, error: 'Missing firstName or lastName' });
+            failed++;
+            continue;
+          }
+          if (!row.phone?.trim()) {
+            errors.push({ row: rowNum, error: 'Missing phone number' });
+            failed++;
+            continue;
+          }
+          if (!row.dateOfBirth?.trim()) {
+            errors.push({ row: rowNum, error: 'Missing dateOfBirth' });
+            failed++;
+            continue;
+          }
+
+          const dob = new Date(row.dateOfBirth);
+          if (isNaN(dob.getTime())) {
+            errors.push({ row: rowNum, error: `Invalid dateOfBirth: ${row.dateOfBirth}` });
+            failed++;
+            continue;
+          }
+
+          const gender = row.gender?.toUpperCase();
+          if (!VALID_GENDERS.includes(gender)) {
+            errors.push({ row: rowNum, error: `Invalid gender: ${row.gender}` });
+            failed++;
+            continue;
+          }
+
+          const bloodGroup = row.bloodGroup?.toUpperCase();
+          const resolvedBloodGroup = VALID_BG.includes(bloodGroup) ? bloodGroup : 'UNKNOWN';
+
+          // ── Check for duplicate phone or shaNumber ────────────────────
+          const phoneExists = await prisma.patient.findFirst({
+            where: { phone: row.phone.trim(), tenant_id: tenantId },
+          });
+          if (phoneExists) {
+            errors.push({ row: rowNum, error: `Phone ${row.phone} already registered` });
+            skipped++;
+            continue;
+          }
+
+          if (row.shaNumber?.trim()) {
+            const shaExists = await prisma.patient.findFirst({
+              where: { shaNumber: row.shaNumber.trim() },
+            });
+            if (shaExists) {
+              errors.push({ row: rowNum, error: `SHA number ${row.shaNumber} already exists` });
+              skipped++;
+              continue;
+            }
+          }
+
+          // ── Generate unique identifiers ───────────────────────────────
+          const patientNumber = await generatePatientNumber();
+
+          // Use phone as basis for a deterministic but unique temp email
+          // (avoids needing real emails in bulk imports)
+          const tempEmail = `patient.${row.phone.trim().replace(/\D/g,'')}@import.medipath.local`;
+
+          const emailExists = await prisma.user.findUnique({ where: { email: tempEmail } });
+          if (emailExists) {
+            // Already imported — skip silently
+            skipped++;
+            continue;
+          }
+
+          // Temporary password: patients must reset via forgot-password flow
+          const tempPassword = `MED@${row.phone.trim().slice(-4)}${new Date(dob).getFullYear()}`;
+          const passwordHash = await bcrypt.hash(tempPassword, 10);
+
+          // ── Create User + Patient in a transaction ────────────────────
+          await prisma.$transaction(async (tx) => {
+            const user = await tx.user.create({
+              data: {
+                email:        tempEmail,
+                passwordHash,
+                role:         'PATIENT',
+                isActive:     true,
+                isVerified:   false,
+                tenant_id:    tenantId,
+              },
+            });
+
+            await tx.patient.create({
+              data: {
+                userId:        user.id,
+                tenant_id:     tenantId,
+                patientNumber,
+                firstName:     row.firstName.trim(),
+                lastName:      row.lastName.trim(),
+                middleName:    row.middleName?.trim() || null,
+                dateOfBirth:   dob,
+                gender,
+                phone:         row.phone.trim(),
+                shaNumber:     row.shaNumber?.trim() || null,
+                county:        row.county?.trim() || null,
+                bloodGroup:    resolvedBloodGroup,
+                isActive:      true,
+              },
+            });
+          });
+
+          imported++;
+
+        } catch (err) {
+          // Surface Prisma error codes to the caller
+          const code    = err.code    || 'UNKNOWN';
+          const meta    = err.meta    ? JSON.stringify(err.meta) : '';
+          const message = err.message || 'Unexpected error';
+          errors.push({
+            row:   rowNum,
+            error: `${code}${meta ? ` [${meta}]` : ''}: ${message}`,
+          });
+          failed++;
+        }
+      }
+
+      return res.json({ total: rows.length, imported, skipped, failed, errors });
+
+    } catch (err) {
+      next(err);
+    }
+  }
+);

@@ -18,7 +18,8 @@
     "test:cov": "jest --coverage",
     "prisma:generate": "prisma generate",
     "prisma:migrate": "prisma migrate dev",
-    "prisma:studio": "prisma studio"
+    "prisma:studio": "prisma studio",
+    "postinstall": "prisma generate"
   },
   "dependencies": {
     "@nestjs/common": "^10.0.0",
@@ -27,7 +28,10 @@
     "@nestjs/passport": "^10.0.3",
     "@nestjs/platform-express": "^10.0.0",
     "@nestjs/swagger": "^7.3.0",
+    "@paralleldrive/cuid2": "^3.3.0",
     "@prisma/client": "^5.22.0",
+    "africastalking": "^0.6.4",
+    "axios": "^1.7.0",
     "bcryptjs": "^2.4.3",
     "class-transformer": "^0.5.1",
     "class-validator": "^0.14.1",
@@ -44,9 +48,7 @@
     "pg": "^8.18.0",
     "prisma": "^5.22.0",
     "rxjs": "^7.8.1",
-    "zod": "^3.24.0",
-    "axios": "^1.7.0",
-    "africastalking": "^0.6.4"
+    "zod": "^3.24.0"
   },
   "devDependencies": {
     "@nestjs/cli": "^10.0.0",
